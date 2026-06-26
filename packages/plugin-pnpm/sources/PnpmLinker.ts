@@ -220,9 +220,14 @@ class PnpmInstaller implements Installer {
         extraneous.delete(name);
 
         concurrentPromises.push(Promise.resolve().then(async () => {
+          const useJunctionsOnWindows = process.platform == `win32` && this.opts.project.configuration.get(`winLinkType`) === WindowsLinkType.JUNCTIONS;
+
           // No need to update the symlink if it's already the correct one
           if (existing) {
-            if (existing.isSymbolicLink() && await xfs.readlinkPromise(depDstPath) === depLinkPath) {
+            // When using junctions on windows, we need to compare against the absolute path of the package location,
+            // because junctions don't support relative paths (depSrcPaths.packageLocation).
+            // For the common cases, we compare against the relative path of the symlink (depLinkPath)
+            if (existing.isSymbolicLink() && await xfs.readlinkPromise(depDstPath) === (useJunctionsOnWindows ? depSrcPaths.packageLocation : depLinkPath)) {
               return;
             } else {
               await xfs.removePromise(depDstPath);
@@ -231,8 +236,7 @@ class PnpmInstaller implements Installer {
 
           await xfs.mkdirpPromise(ppath.dirname(depDstPath));
 
-
-          if (process.platform == `win32` && this.opts.project.configuration.get(`winLinkType`) === WindowsLinkType.JUNCTIONS) {
+          if (useJunctionsOnWindows) {
             await xfs.symlinkPromise(depSrcPaths.packageLocation, depDstPath, `junction`);
           } else {
             await xfs.symlinkPromise(depLinkPath, depDstPath);
