@@ -400,6 +400,20 @@ async function cleanNodeModules(nmPath: PortablePath, extraneous: Map<PortablePa
 }
 
 async function removeIfEmpty(dir: PortablePath) {
+  // Check if the directory has entries before attempting to remove it. Attempting an rmdir
+  // on a non-empty directory counts as a write operation at the OS level, even though it fails.
+  // Reliable build engines (e.g. BuildXL) track all file-system writes to determine whether a
+  // build step can be cached. An unnecessary delete attempt on the store folder would invalidate
+  // the cache or cause file access violations when the store folder is mounted read-only.
+  try {
+    const entries = await xfs.readdirPromise(dir);
+    if (entries.length > 0) {
+      return;
+    }
+  } catch (_) {
+    // fall back, just try to delete the directory to see if it is empty.
+  }
+
   try {
     await xfs.rmdirPromise(dir);
   } catch (error) {
